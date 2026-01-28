@@ -1,8 +1,13 @@
 from __future__ import annotations
+
+import logging
+import time
 import uuid
 
 from app.core.CacheRepository import CacheRepository
 from app.core.LLMAgent import AIAgent
+
+_logger = logging.getLogger(__name__)
 
 
 class QueryDecisionFlow:
@@ -18,6 +23,8 @@ class QueryDecisionFlow:
 
     def handle_query(self, query: str) -> dict:
 
+        start = time.perf_counter()
+
         #assess query staleness risk
         risk_level = self.assess_query_staleness_risk(query)
 
@@ -25,6 +32,7 @@ class QueryDecisionFlow:
         if risk_level != "high":
             response = self._cache.get("l1", query)
             if response is not None:
+                self._cache.record_outcome("l1", start, f"L1 hit (risk={risk_level})")
                 return {"response": response, "metadata": {"source": "cache", "risk_level": risk_level}}
 
         #if l1 cache miss, embed query
@@ -32,6 +40,7 @@ class QueryDecisionFlow:
         
         #return best match in l2 cache from top k = 5 results from (ANN search using cosine similarity evaluation)
         knn = self._cache.knn_search(embedding, k=5)
+        similarity_score = None
 
         #if best match has high similarity score, return response from l2 cache
 
@@ -40,15 +49,19 @@ class QueryDecisionFlow:
             cache_id, similarity_score = knn
             cached_response = self._cache.get("l2", cache_id)
             
-            print(f"Cached response: {cached_response} has similarity score: {similarity_score}")
+            _logger.info("L2 candidate (risk=%s score=%.4f cache_id=%s)", risk_level, similarity_score, cache_id)
             
             if similarity_score > self._similarity_threshold:
                 response = self._cache.get("l2", cache_id)
                 if response is not None:
+                    self._cache.record_outcome("l2", start, f"L2 hit (score={similarity_score:.4f})")
+                    
                     return {"response": response, "metadata": {"source": "cache", "similarity_score": similarity_score}}
 
         #if closest match has low similarity score, return response from LLM
         response = self._ai.generate_response(query)
+        self._cache.record_outcome("llm", start, f"LLM response (risk={risk_level})")
+
         return {
             "response": response,
             "metadata": {"source": "llm", "risk_level": risk_level, "similarity_score": similarity_score},

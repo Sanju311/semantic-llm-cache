@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import struct
 from typing import Literal, Optional
 
@@ -7,6 +8,10 @@ from redis.commands.search.field import TagField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.exceptions import ResponseError
+
+import time
+
+_logger = logging.getLogger(__name__)
 
 class CacheRepository:
     """Data access layer for Redis-backed caches (L1, L2, and metrics)."""
@@ -48,6 +53,20 @@ class CacheRepository:
         best = res.docs[0]
         return best.cache_id, 1 - float(best.distance)
 
+    def incr_metric(self, name: str, amount: int | float = 1) -> None:
+        key = self._format_key("metrics", name)
+        if isinstance(amount, int) and not isinstance(amount, bool):
+            self._redis.incrby(key, amount)
+            return
+        self._redis.incrbyfloat(key, float(amount))
+
+    def record_outcome(self, outcome: Literal["l1", "l2", "llm"], start: float, message: str) -> None:
+        latency_ms = (time.perf_counter() - start) * 1000
+        self.incr_metric("requests_total", 1)
+        self.incr_metric("latency_ms_sum", latency_ms)
+        self.incr_metric(f"{outcome}_calls_total", 1)
+        _logger.info("%s %.2fms", message, latency_ms)
+
     def upsert_vector(self, cache_id: str, embedding: list[float], ttl: int) -> None:
         key = f"{self._VECTOR_PREFIX}{cache_id}"
         self._redis.hset(
@@ -81,7 +100,9 @@ class CacheRepository:
             self._vector.create_index(schema, definition=definition)
         except ResponseError as e:
             if "Index already exists" in str(e):
+                _logger.info("Vector index already exists: %s", self._VECTOR_INDEX)
                 return
+            _logger.error("Vector index create failed: %s", e)
             raise
 
     def _pack_vector(self, embedding: list[float]) -> bytes:

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from openai import OpenAI
+
+_logger = logging.getLogger(__name__)
 
 
 class AIAgent:
@@ -32,47 +35,36 @@ class AIAgent:
 
     #Google: Gemini 2.0 Flash experimental
     def choose_ttl(self, query: str) -> int:
-
-        try: 
-            prompt = (
-                "You are a TTL classifier for a semantic cache.\n"
-                "Your task is to classify the expected stability of the ANSWER to this specific query into one of the TTL buckets based on how quickly the information is expected to change.\n\n"
-
-                "TTL buckets (return ONLY the number):\n"
-                "- 3600  → Medium staleness risk. Information may change within a few hours or days.\n"
-                "         Examples: recent announcements, this week’s updates, evolving situationsn"
-                "- 10800 → Low-medium staleness risk. Information changes slowly but is not fully timeless.\n"
-                "         Examples: summaries of prior events, comparisons, recent facts.\n"
-                "- 43200 → Low staleness risk. Evergreen or mostly stable information.\n"
-                "         Examples: definitions, explanations, how things work, historical facts.\n\n"
-
-                "If unsure between two buckets, ALWAYS choose the shorter TTL.\n\n"
-                f"User query: {query}"
-            )
-
-            completion = self._client.chat.completions.create(
-                model="google/gemini-2.0-flash-exp",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Return only one integer TTL in seconds. If the answer is expected to be stable for a long time, return 43200. "
-                            "Valid outputs: 3600, 10800, 43200. "
-                            "No explanations. No extra text."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0,
-            )
-
-            raw = (completion.choices[0].message.content or "").strip()
-            print(f"Raw TTL: {raw}")
+        prompt = (
+            "You are a TTL classifier for a semantic cache.\n"
+            "Pick exactly one TTL bucket for the user's query.\n\n"
+            "TTL buckets (return ONLY the number):\n"
+            "- 900   (15 minutes) high staleness risk\n"
+            "- 3600  (1 hour)      medium staleness risk\n"
+            "- 10800 (3 hours)     low-medium staleness risk\n"
+            "- 43200 (12 hours)    low staleness risk\n\n"
+            "If unsure, ALWAYS choose the shorter TTL.\n\n"
+            f"User query: {query}"
+        )
+        completion = self._client.chat.completions.create(
+            model="google/gemini-2.0-flash-exp",
+            messages=[
+                {"role": "system", "content": "Return only one integer TTL in seconds: 900, 3600, 10800, or 43200."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+        )
+        raw = (completion.choices[0].message.content or "").strip()
+        try:
             ttl = int(raw)
-            return ttl if ttl in {3600, 10800, 43200} else 3600
-        
         except ValueError:
+            _logger.error("TTL parse failed: %r", raw)
             return 3600
+
+        if ttl not in {900, 3600, 10800, 43200}:
+            _logger.error("TTL out of range: %r", raw)
+            return 3600
+        return ttl
 
 
 
