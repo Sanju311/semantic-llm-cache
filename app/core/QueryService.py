@@ -60,7 +60,7 @@ class QueryService:
         embedding = self._ai.embed_query(query)
         
         #return best match in l2 cache from top k = 5 results from (ANN search using cosine similarity evaluation)
-        knn = self._cache.knn_search(embedding, k=5)
+        knn = self._cache.ann_search(embedding, k=5)
 
         _logger.info("knn returned from ANN search: %s", knn)    
         similarity_score = None

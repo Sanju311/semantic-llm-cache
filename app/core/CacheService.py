@@ -44,7 +44,7 @@ class CacheService:
         return int(value)
 
     #returns best match given 3 results from ANN search
-    def knn_search(self, embedding: list[float], k: int = 3) -> Optional[tuple[str, float]]:
+    def ann_search(self, embedding: list[float], k: int = 3) -> Optional[tuple[str, float]]:
 
         packed = self._pack_vector(embedding)
         q = (
