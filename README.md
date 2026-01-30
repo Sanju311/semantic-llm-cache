@@ -19,7 +19,7 @@
   - **Purpose**: Stores all cache miss/hit metrics for observability
 
 ### System design
-![Semantic Cache System Design](images/SemanticCacheSystemDesign.jpg)
+![Semantic Cache System Design](images/SemanticCacheSystemDesign.png)
 
 ### UI (metrics dashboard)
 - **URL**: `http://localhost:4000`
