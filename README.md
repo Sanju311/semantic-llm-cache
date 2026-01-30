@@ -5,7 +5,7 @@
 
 
 ### High-level flow (one request)
-- **Assess Query Stalenss Risk**: Use key word matching to identify time-sensitive queries to bypass cache ('now', 'current', 'latest')
+- **Assess Query Staleness Risk**: Use key word matching to identify time-sensitive queries to bypass cache ('now', 'current', 'latest')
 - **L1 lookup**: exact `l1:<query>` match returns immediately.
 - **Embed + ANN search**: compute query embedding and run vector KNN search.
 - **L2 lookup**: if similarity is above certain match threshold, return `l2:<cache_id>`.
