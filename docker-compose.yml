@@ -1,11 +1,29 @@
 services:
   api:
     build: .
+    env_file:
+      - .env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
     ports:
       - "3000:3000"
+    volumes:
+      - ./app:/app/app
+      - ./load:/app/load
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000", "--reload", "--reload-dir", "/app/app", "--log-level", "info"]
+
+  web:
+    build: ./web
+    ports:
+      - "4000:4000"
+    depends_on:
+      - api
+    volumes:
+      - ./web/src:/app/src
+      - ./web/index.html:/app/index.html
+      - ./web/vite.config.js:/app/vite.config.js
+      - /app/node_modules
 
   redis:
     image: redis/redis-stack:7.2.0-v10

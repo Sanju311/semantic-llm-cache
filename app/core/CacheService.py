@@ -13,7 +13,7 @@ import time
 
 _logger = logging.getLogger(__name__)
 
-class CacheRepository:
+class CacheService:
     """Data access layer for Redis-backed caches (L1, L2, and metrics)."""
 
     CacheType = Literal["l1", "l2", "metrics"]
@@ -22,6 +22,7 @@ class CacheRepository:
     _VECTOR_PREFIX = "vec:"
     _VECTOR_FIELD = "embedding"
     _CACHE_ID_FIELD = "cache_id"
+    _QUERY_FIELD = "query"
     _EMBED_DIM = 1536  # openai/text-embedding-3-small
 
     def __init__(self, redis_client) -> None:
@@ -36,6 +37,12 @@ class CacheRepository:
     def set(self, cache_type: CacheType, key: str, value: str, ttl: int) -> None:
         self._redis.set(self._format_key(cache_type, key), value, ex=ttl)
 
+    def get_ttl(self, cache_type: CacheType, key: str) -> Optional[int]:
+        value = self._redis.ttl(self._format_key(cache_type, key))
+        if value is None or value < 0:
+            return None
+        return int(value)
+
     #returns best match given 3 results from ANN search
     def knn_search(self, embedding: list[float], k: int = 3) -> Optional[tuple[str, float]]:
 
@@ -46,7 +53,11 @@ class CacheRepository:
             .sort_by("distance")
             .dialect(2)
         )
-        res = self._vector.search(q, query_params={"vec": packed})
+        try:
+            res = self._vector.search(q, query_params={"vec": packed})
+        except ResponseError as e:
+            _logger.error("Vector search failed: %s", e)
+            raise
         if not res.docs:
             return None
 
@@ -60,23 +71,46 @@ class CacheRepository:
             return
         self._redis.incrbyfloat(key, float(amount))
 
-    def record_outcome(self, outcome: Literal["l1", "l2", "llm"], start: float, message: str) -> None:
+    def flush_all(self) -> None:
+        self._redis.flushdb()
+        self._vector = self._redis.ft(self._VECTOR_INDEX)
+        self._create_vector_index()
+        _logger.info("Redis DB flushed and vector index recreated: %s", self._VECTOR_INDEX)
+
+    def record_outcome(self, outcome: Literal["l1", "l2", "llm"], start: float, message: str) -> float:
         latency_ms = (time.perf_counter() - start) * 1000
-        self.incr_metric("requests_total", 1)
-        self.incr_metric("latency_ms_sum", latency_ms)
+        self.incr_metric(f"{outcome}_latency_ms_sum", latency_ms)
         self.incr_metric(f"{outcome}_calls_total", 1)
         _logger.info("%s %.2fms", message, latency_ms)
+        return latency_ms
 
-    def upsert_vector(self, cache_id: str, embedding: list[float], ttl: int) -> None:
+    def upsert_vector(self, cache_id: str, query: str, embedding: list[float], ttl: int) -> None:
         key = f"{self._VECTOR_PREFIX}{cache_id}"
         self._redis.hset(
             key,
             mapping={
                 self._CACHE_ID_FIELD: cache_id,
+                self._QUERY_FIELD: query,
                 self._VECTOR_FIELD: self._pack_vector(embedding),
             },
         )
         self._redis.expire(key, ttl)
+
+    def get_vector_query(self, cache_id: str) -> Optional[str]:
+        key = f"{self._VECTOR_PREFIX}{cache_id}"
+        value = self._redis.hget(key, self._QUERY_FIELD)
+        return value if value is not None else None
+
+    def get_metrics(self) -> dict:
+        keys = [
+            "l1_latency_ms_sum",
+            "l2_latency_ms_sum",
+            "llm_latency_ms_sum",
+            "l1_calls_total",
+            "l2_calls_total",
+            "llm_calls_total",
+        ]
+        return {k: self.get("metrics", k) for k in keys}
 
     @staticmethod
     def _format_key(cache_type: CacheType, key: str) -> str:
