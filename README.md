@@ -4,7 +4,7 @@
 `semantic-llm-cache` is a semantic caching service built with **FastAPI** + **Redis Stack** (RediSearch vector index). It reduces redundant LLM calls by serving exact matches **(L1 cache)** and semantic matches **(L2 cache)**. Cache ttl's are set via a helper llm that determines the keys risk of staleness.
 
 
-### High-level flow (one request)
+### High-level flow
 - **Assess Query Staleness Risk**: Use key word matching to identify time-sensitive high risk queries to bypass cache ('now', 'current', 'latest')
 - **L1 lookup**: exact `l1:<query>` match returns immediately.
 - **Embed + ANN search**: compute query embedding and run vector KNN search.
