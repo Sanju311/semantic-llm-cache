@@ -24,6 +24,7 @@
 ### UI (metrics dashboard)
 - **URL**: `http://localhost:4000`
 - **What it shows**: hit % and avg latency for L1 / L2 / LLM (derived client-side from `/api/metrics`).
+![Metrics Dashboard](images/MetricsPage.png)
 
 ### Load testing (Locust)
 Use the load test API route (dev-only):
