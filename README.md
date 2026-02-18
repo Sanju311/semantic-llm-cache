@@ -5,8 +5,6 @@
 
 ### Video Links
 - **Short Demo**: https://www.loom.com/share/83eb2154d22049c0a55b3714e0b04c05
-- **Design Explanation Pt1.** https://www.loom.com/share/027484b7bda2492499883a25c7c1272e
-- **Design Explanation Pt2.** https://www.loom.com/share/8255c2bdad12417fa15cc2a59aa76d80
 
 ### High-level flow
 - **Assess Query Staleness Risk**: Use key word matching to identify time-sensitive high risk queries to bypass cache ('now', 'current', 'latest')
